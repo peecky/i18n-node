@@ -226,12 +226,14 @@ i18n.prototype = {
 			var locale = match[2];
 			var parts = locale.split("-");
 
-			if (!prefLocale) {
-				if (self.locales[locale]) {
-					prefLocale = locale;
-				} else if (parts.length > 1 && self.locales[parts[0]]) {
-					prefLocale = parts[0];
-				}
+			if (self.locales[locale]) {
+				prefLocale = locale;
+			} else if (parts.length > 1 && self.locales[parts[0]]) {
+				prefLocale = parts[0];
+			}
+
+			if (prefLocale) {
+				break;
 			}
 		}
 
