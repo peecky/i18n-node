@@ -233,6 +233,7 @@ i18n.prototype = {
 			}
 
 			if (prefLocale) {
+				prefLocale = prefLocale.toLowerCase();
 				break;
 			}
 		}
