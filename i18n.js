@@ -1,551 +1,359 @@
 /**
- * @author      Created by Marcus Spiegel <marcus.spiegel@gmail.com> on 2011-03-25.
- * @link        https://github.com/mashpie/i18n-node
- * @license     http://opensource.org/licenses/MIT
+ * @author  John Resig <jeresig@gmail.com>
+ * @author  Originally by Marcus Spiegel <marcus.spiegel@gmail.com>
+ * @link    https://github.com/jeresig/i18n-node
+ * @license http://opensource.org/licenses/MIT
  *
- * @version     0.4.1
+ * @version 0.4.6
  */
 
-// dependencies and "private" vars
-var vsprintf = require('sprintf').vsprintf,
-    fs = require('fs'),
-    url = require('url'),
-    path = require('path'),
-    debug = require('debug')('i18n:debug'),
-    warn = require('debug')('i18n:warn'),
-    error = require('debug')('i18n:error'),
-    Mustache = require('mustache'),
-    locales = {},
-    api = ['__', '__n', 'getLocale', 'setLocale', 'getCatalog'],
-    pathsep = path.sep || '/', // ---> means win support will be available in node 0.8.x and above
-    defaultLocale, updateFiles, cookiename, extension, directory, indent, postTranslate;
+// dependencies
+var vsprintf = require("sprintf").vsprintf,
+	fs = require("fs"),
+	path = require("path");
 
-// public exports
-var i18n = exports;
+var i18n = module.exports = function(opt) {
+	var self = this;
 
-i18n.version = '0.4.1';
+	// Put into dev or production mode
+	this.devMode = process.env.NODE_ENV !== "production";
 
-i18n.configure = function i18nConfigure(opt) {
+	// Copy over options
+	for (var prop in opt) {
+		this[prop] = opt[prop];
+	}
 
-  // you may register helpers in global scope, up to you
-  if (typeof opt.register === 'object') {
-    applyAPItoObject(opt.register);
-  }
+	// you may register helpers in global scope, up to you
+	if (typeof this.register === "object") {
+		i18n.resMethods.forEach(function(method) {
+			self.register[method] = self[method].bind(self);
+		});
+	}
 
-  // sets a custom cookie name to parse locale settings from
-  cookiename = (typeof opt.cookie === 'string') ? opt.cookie : null;
+	// implicitly read all locales
+	// if it's an array of locale names, read in the data
+	if (opt.locales && opt.locales.forEach) {
+		this.locales = {};
 
-  // where to store json files
-  directory = (typeof opt.directory === 'string') ? opt.directory : __dirname + pathsep + 'locales';
+		opt.locales.forEach(function(locale) {
+			self.readFile(locale);
+		});
 
-  // write new locale information to disk
-  updateFiles = (typeof opt.updateFiles === 'boolean') ? opt.updateFiles : true;
+		this.defaultLocale = opt.locales[0];
+	}
 
-  // what to use as the indentation unit (ex: "\t", "  ")
-  indent = (typeof opt.indent === 'string') ? opt.indent : "\t";
+	// Set the locale to the default locale
+	this.setLocale(this.defaultLocale);
 
-  // where to store json files
-  extension = (typeof opt.extension === 'string') ? opt.extension : '.json';
+	// Check the defaultLocale
+	if (!this.locales[this.defaultLocale]) {
+		console.error("Not a valid default locale.");
+	}
 
-  // setting defaultLocale
-  defaultLocale = (typeof opt.defaultLocale === 'string') ? opt.defaultLocale : 'en';
+	if (this.request) {
+		if (this.subdomain) {
+			this.setLocaleFromSubdomain(this.request);
+		}
 
-  // do a post processing from the translated string
-  postTranslate = (typeof opt.postTranslate === 'function') ? opt.postTranslate : null;
+		if (this.query !== false) {
+			this.setLocaleFromQuery(this.request);
+		}
 
-  // implicitly read all locales
-  if (typeof opt.locales === 'object') {
-    opt.locales.forEach(function (l) {
-      read(l);
-    });
-  }
+		this.prefLocale = this.preferredLocale();
+	}
 };
 
-i18n.init = function i18nInit(request, response, next) {
-  if (typeof request === 'object') {
-    guessLanguage(request);
+i18n.version = "0.4.6";
 
-    if (typeof response === 'object') {
-      applyAPItoObject(request, response);
+i18n.localeCache = {};
+i18n.resMethods = ["__", "__n", "getLocale", "isPreferredLocale"];
 
-      // register locale to res.locals so hbs helpers know this.locale
-      if (!response.locale) response.locale = request.locale;
+i18n.expressBind = function(app, opt) {
+	if (!app) {
+		return;
+	}
 
-      if (response.locals) {
-        applyAPItoObject(request, response.locals);
+	app.use(function(req, res, next) {
+		opt.request = req;
+		req.i18n = new i18n(opt);
 
-        // register locale to res.locals so hbs helpers know this.locale
-        if (!response.locals.locale) response.locals.locale = request.locale;
-      }
-    }
-  }
+		// Express 3
+		if (res.locals) {
+			i18n.registerMethods(res.locals, req)
+		}
 
-  if (typeof next === 'function') {
-    next();
-  }
+		next();
+	});
+
+	// Express 2
+	if (app.dynamicHelpers) {
+		app.dynamicHelpers(i18n.registerMethods({}));
+	}
 };
 
-i18n.__ = function i18nTranslate(phrase) {
-  var msg, namedValues, args;
-  var locale, phrase_;
-  
-  // Accept an object with named values as the last parameter
-  // And collect all other arguments, except the first one in args
-  if (
-    arguments.length > 1 &&
-    arguments[arguments.length - 1] !== null && 
-    typeof arguments[arguments.length - 1] === "object"
-  ) {
-    namedValues = arguments[arguments.length - 1];
-    args = Array.prototype.slice.call(arguments, 1, -1);
-  } else {
-    namedValues = {};
-    args = arguments.length >= 2 ? Array.prototype.slice.call(arguments, 1) : [];
-  }
-  
-  // called like __({phrase: "Hello", locale: "en"})
-  if (typeof phrase === 'object') {
-    if (typeof phrase.locale === 'string' && typeof phrase.phrase === 'string') {
-	  locale = phrase.locale;
-	  phrase_ = phrase.phrase;
-    }
-  }
-  // called like __("Hello")
-  else {
-    // get translated message with locale from scope (deprecated) or object
-	locale = getLocaleFromObject(this);
-	phrase_ = phrase;
-  }
-  msg = translate(locale, phrase_);
+i18n.registerMethods = function(helpers, req) {
+	i18n.resMethods.forEach(function(method) {
+		if (req) {
+			helpers[method]	= req.i18n[method].bind(req.i18n);
+		} else {
+			helpers[method] = function(req) {
+				return req.i18n[method].bind(req.i18n);
+			};	
+		}
+		
+	});
 
-  // if the msg string contains {{Mustache}} patterns we render it as a mini tempalate
-  if ((/{{.*}}/).test(msg)) {
-    msg = Mustache.render(msg, namedValues);
-  }
-
-  // if we have extra arguments with values to get replaced,
-  // an additional substition injects those strings afterwards
-  if ((/%/).test(msg) && args && args.length > 0) {
-    msg = vsprintf(msg, args);
-  }
-
-  if (postTranslate) {
-	  msg = postTranslate(msg, { locale: locale, phrase: phrase_ });
-  }
-  
-  return msg;
+	return helpers;
 };
 
-i18n.__n = function i18nTranslatePlural(singular, plural, count) {
-  var msg, namedValues, args = [];
-  var locale, phrase_, singular_, plural_;
-  
-  // Accept an object with named values as the last parameter
-  if (
-    arguments.length >= 2 &&
-    arguments[arguments.length - 1] !== null && 
-    typeof arguments[arguments.length - 1] === "object"
-  ) {
-    namedValues = arguments[arguments.length - 1];
-    args = arguments.length >= 5 ? Array.prototype.slice.call(arguments, 3, -1) : [];
-  } else {
-    namedValues = {};
-    args = arguments.length >= 4 ? Array.prototype.slice.call(arguments, 3) : [];
-  }
-  
-  // called like __n({singular: "%s cat", plural: "%s cats", locale: "en"}, 3)
-  if (typeof singular === 'object') {
-    if (typeof singular.locale === 'string' && typeof singular.singular === 'string' && typeof singular.plural === 'string') {
-	  locale = singular.locale;
-	  singular_ = singular.singular;
-	  plural_ = singular.plural;
-    }
-    args.unshift(count);
-    // some template engines pass all values as strings -> so we try to convert them to numbers
-    if (typeof plural === 'number' || parseInt(plural, 10)+"" === plural) {
-      count = plural;
-    }
+i18n.prototype = {
+	defaultLocale: "en",
+	extension: ".js",
+	directory: "./locales",
+	cookieName: "lang",
 
-    // called like __n({singular: "%s cat", plural: "%s cats", locale: "en", count: 3})
-    if(typeof singular.count === 'number' || typeof singular.count === 'string'){
-      count = singular.count;
-      args.unshift(plural);      
-    }
-  }
-  else {
-    // called like  __n('cat', 3)
-    if (typeof plural === 'number' || parseInt(plural, 10)+"" === plural) {
-      count = plural;
-      args.unshift(count);
-      args.unshift(plural);
-    }
-    // called like __n('%s cat', '%s cats', 3)
-    // get translated message with locale from scope (deprecated) or object
-	locale = getLocaleFromObject(this);
-	singular_ = singular;
-	plural_ = plural;
-  }
-  msg = translate(locale, singular_, plural_);
-  if (count == null) count = namedValues.count;
+	__: function() {
+		var msg = this.translate(this.locale, arguments[0]);
 
-  // parse translation and replace all digets '%d' by `count`
-  // this also replaces extra strings '%%s' to parseble '%s' for next step
-  // simplest 2 form implementation of plural, like https://developer.mozilla.org/en/docs/Localization_and_Plurals#Plural_rule_.231_.282_forms.29
-  if (count > 1) {
-    msg = vsprintf(msg.other, [parseInt(count, 10)]);
-	phrase_ = plural_;
-  } else {
-    msg = vsprintf(msg.one, [parseInt(count, 10)]);
-	phrase_ = singular_;
-  }
-  
-  // if the msg string contains {{Mustache}} patterns we render it as a mini tempalate
-  if ((/{{.*}}/).test(msg)) {
-    msg = Mustache.render(msg, namedValues);
-  }
-  
-  // if we have extra arguments with strings to get replaced,
-  // an additional substition injects those strings afterwards
-  if ((/%/).test(msg) && args && args.length > 0) {
-    msg = vsprintf(msg, args);
-  }
+		if (arguments.length > 1) {
+			msg = vsprintf(msg, Array.prototype.slice.call(arguments, 1));
+		}
 
-  if (postTranslate) {
-	  msg = postTranslate(msg, { locale: locale, phrase: phrase_, count: count, singular: singular_, plural: plural_ });
-  }
+		return msg;
+	},
 
-  return msg;
+	__n: function(singular, plural, count) {
+		var msg = this.translate(this.locale, singular, plural);
+
+		msg = vsprintf(parseInt(count, 10) > 1 ? msg.other : msg.one, [count]);
+
+		if (arguments.length > 3) {
+			msg = vsprintf(msg, Array.prototype.slice.call(arguments, 3));
+		}
+
+		return msg;
+	},
+
+	setLocale: function(locale) {
+		
+		if (!locale) return;
+		
+		if (!this.locales[locale]) {
+			if (this.devMode) {
+				console.warn("Locale (" + locale + ") not found.");
+			}
+
+			locale = this.defaultLocale;
+		}
+
+		return (this.locale = locale);
+	},
+
+	getLocale: function() {
+		return this.locale;
+	},
+
+	isPreferredLocale: function() {
+		return !this.prefLocale ||
+			this.prefLocale === this.getLocale();
+	},
+
+	setLocaleFromQuery: function(req) {
+		req = req || this.request;
+
+		if (!req || !req.query || !req.query.lang) {
+			return;
+		}
+
+		var locale = req.query.lang.toLowerCase();
+
+		if (this.locales[locale]) {
+			if (this.devMode) {
+				console.log("Overriding locale from query: " + locale);
+			}
+
+			this.setLocale(locale);
+		}
+	},
+
+	setLocaleFromSubdomain: function(req) {
+		req = req || this.request;
+
+		if (!req || !req.headers || !req.headers.host) {
+			return;
+		}
+
+		if (/^([^.]+)/.test(req.headers.host) && this.locales[RegExp.$1]) {
+			if (this.devMode) {
+				console.log("Overriding locale from host: " + RegExp.$1);
+			}
+
+			this.setLocale(RegExp.$1);
+		}
+	},
+
+	setLocaleFromCookie: function(req) {
+		req = req || this.request;
+
+		if (!req || !req.cookies || !this.cookieName || !req.cookies[this.cookieName]) {
+			return;
+		}
+
+		var locale = req.cookies[this.cookieName].toLowerCase();
+
+		if (this.locales[locale]) {
+			if (this.devMode) {
+				console.log("Overriding locale from cookie: " + locale);
+			}
+
+			this.setLocale(locale);
+		}
+	},
+
+	preferredLocale: function(req) {
+		req = req || this.request;
+
+		if (!req || !req.headers) {
+			return;
+		}
+
+		var accept = req.headers["accept-language"] || "",
+			regExp = /(^|,\s*)([a-z-]+)/gi,
+			self = this,
+			prefLocale;
+
+		while ((match = regExp.exec(accept))){
+			var locale = match[2];
+			var parts = locale.split("-");
+
+			if (!prefLocale) {
+				if (self.locales[locale]) {
+					prefLocale = locale;
+				} else if (parts.length > 1 && self.locales[parts[0]]) {
+					prefLocale = parts[0];
+				}
+			}
+		}
+
+		return prefLocale || this.defaultLocale;
+	},
+
+	// read locale file, translate a msg and write to fs if new
+	translate: function(locale, singular, plural) {
+		if (!locale || !this.locales[locale]) {
+			if (this.devMode) {
+				console.warn("WARN: No locale found. Using the default (" +
+					this.defaultLocale + ") as current locale");
+			}
+
+			locale = this.defaultLocale;
+
+			this.initLocale(locale, {});
+		}
+
+		if (!this.locales[locale][singular]) {
+			this.locales[locale][singular] = plural ?
+				{ one: singular, other: plural } :
+				singular;
+
+			if (this.devMode) {
+				this.writeFile(locale);
+			}
+		}
+
+		return this.locales[locale][singular];
+	},
+
+	// try reading a file
+	readFile: function(locale) {
+		var file = this.locateFile(locale);
+
+		if (!this.devMode && i18n.localeCache[file]) {
+			this.initLocale(locale, i18n.localeCache[file]);
+			return;
+		}
+
+		try {
+			var localeFile = fs.readFileSync(file);
+
+			try {
+				// parsing filecontents to locales[locale]
+				this.initLocale(locale, JSON.parse(localeFile));
+
+			} catch (e) {
+				console.error('unable to parse locales from file (maybe ' + file +
+					' is empty or invalid json?): ', e);
+			}
+
+		} catch (e) {
+			// unable to read, so intialize that file
+			// locales[locale] are already set in memory, so no extra read required
+			// or locales[locale] are empty, which initializes an empty locale.json file
+			this.writeFile(locale);
+		}
+	},
+
+	// try writing a file in a created directory
+	writeFile: function(locale) {
+		// don't write new locale information to disk if we're not in dev mode
+		if (!this.devMode) {
+			// Initialize the locale if didn't exist already
+			this.initLocale(locale, {});
+		}
+
+		// creating directory if necessary
+		try {
+			fs.lstatSync(this.directory);
+
+		} catch (e) {
+			if (this.devMode) {
+				console.log('creating locales dir in: ' + this.directory);
+			}
+
+			fs.mkdirSync(this.directory, 0755);
+		}
+
+		// Initialize the locale if didn't exist already
+		this.initLocale(locale, {});
+
+		// writing to tmp and rename on success
+		try {
+			var target = this.locateFile(locale),
+				tmp = target + ".tmp";
+
+			fs.writeFileSync(tmp, JSON.stringify(
+				this.locales[locale], null, "\t"), "utf8");
+
+			if (fs.statSync(tmp).isFile()) {
+				fs.renameSync(tmp, target);
+
+			} else {
+				console.error('unable to write locales to file (either ' + tmp +
+					' or ' + target + ' are not writeable?): ');
+			}
+
+		} catch (e) {
+			console.error('unexpected error writing files (either ' + tmp +
+				' or ' + target + ' are not writeable?): ', e);
+		}
+	},
+
+	// basic normalization of filepath
+	locateFile: function(locale) {
+		return path.normalize(this.directory + '/' + locale + this.extension);
+	},
+
+	initLocale: function(locale, data) {
+		if (!this.locales[locale]) {
+			this.locales[locale] = data;
+
+			// Only cache the files when we're not in dev mode
+			if (!this.devMode) {
+			    var file = this.locateFile(locale);
+				if ( !i18n.localeCache[file] ) {
+			    	i18n.localeCache[file] = data;
+				}
+			}
+		}
+	}
 };
-
-i18n.setLocale = function i18nSetLocale(locale_or_request, locale) {
-  var target_locale = locale_or_request,
-      request;
-
-  // called like setLocale(req, 'en')
-  if (locale_or_request && typeof locale === 'string' && locales[locale]) {
-    request = locale_or_request;
-    target_locale = locale;
-  }
-
-  // called like req.setLocale('en')
-  if (locale === undefined && typeof this.locale === 'string' && typeof locale_or_request === 'string') {
-    request = this;
-    target_locale = locale_or_request;
-  }
-
-  if (locales[target_locale]) {
-
-    // called like setLocale('en')
-    if (request === undefined) {
-      defaultLocale = target_locale;
-    }
-    else {
-      request.locale = target_locale;
-    }
-  }
-  return i18n.getLocale(request);
-};
-
-i18n.getLocale = function i18nGetLocale(request) {
-
-  // called like getLocale(req)
-  if (request && request.locale) {
-    return request.locale;
-  }
-
-  // called like req.getLocale()
-  if (request === undefined && typeof this.locale === 'string') {
-    return this.locale;
-  }
-
-  // called like getLocale()
-  return defaultLocale;
-};
-
-i18n.getCatalog = function i18nGetCatalog(locale_or_request, locale) {
-  var target_locale = locale_or_request;
-
-  // called like getCatalog(req)
-  if (typeof locale_or_request === 'object' && typeof locale_or_request.locale === 'string') {
-    target_locale = locale_or_request.locale;
-  }
-
-  // called like getCatalog(req, 'en')
-  if (typeof locale_or_request === 'object' && typeof locale === 'string') {
-    target_locale = locale;
-  }
-
-  // called like req.getCatalog()
-  if (locale === undefined && typeof this.locale === 'string') {
-    target_locale = this.locale;
-  }
-
-  // called like req.getCatalog('en')
-  if (locale === undefined && typeof locale_or_request === 'string') {
-    target_locale = locale_or_request;
-  }
-
-  // called like getCatalog()
-  if (target_locale === undefined || target_locale === '') {
-    return locales;
-  }
-
-  if (locales[target_locale]) {
-    return locales[target_locale];
-  } else {
-    logWarn('No catalog found for "' + target_locale + '"');
-    return false;
-  }
-};
-
-i18n.overrideLocaleFromQuery = function (req) {
-  if (req === null) {
-    return;
-  }
-  var urlObj = url.parse(req.url, true);
-  if (urlObj.query.locale) {
-    logDebug("Overriding locale from query: " + urlObj.query.locale);
-    i18n.setLocale(req, urlObj.query.locale.toLowerCase());
-  }
-};
-
-// ===================
-// = private methods =
-// ===================
-/**
- * registers all public API methods to a given response object when not already declared
- */
-
-function applyAPItoObject(request, response) {
-
-  // attach to itself if not provided
-  var object = response || request;
-  api.forEach(function (method) {
-
-    // be kind rewind, or better not touch anything already exiting
-    if (!object[method]) {
-      object[method] = function () {
-        return i18n[method].apply(request, arguments);
-      };
-    }
-  });
-}
-
-/**
- * guess language setting based on http headers
- */
-
-function guessLanguage(request) {
-  if (typeof request === 'object') {
-    var language_header = request.headers['accept-language'],
-        languages = [],
-        regions = [];
-
-    request.languages = [defaultLocale];
-    request.regions = [defaultLocale];
-    request.language = defaultLocale;
-    request.region = defaultLocale;
-
-    if (language_header) {
-      language_header.split(',').forEach(function (l) {
-        var header = l.split(';', 1)[0],
-            lr = header.split('-', 2);
-        if (lr[0]) {
-          languages.push(lr[0].toLowerCase());
-        }
-        if (lr[1]) {
-          regions.push(lr[1].toLowerCase());
-        }
-      });
-
-      if (languages.length > 0) {
-        request.languages = languages;
-        request.language = languages[0];
-      }
-
-      if (regions.length > 0) {
-        request.regions = regions;
-        request.region = regions[0];
-
-        // to test if having region translation
-        if (request.region && request.language && locales[ request.language + "-" + request.region]){
-          //logDebug("set region") ;
-          request.language = request.language + "-" + request.region;
-        }
-
-      }
-    }
-
-    // setting the language by cookie
-    if (cookiename && request.cookies && request.cookies[cookiename]) {
-      request.language = request.cookies[cookiename];
-    }
-
-    i18n.setLocale(request, request.language);
-  }
-}
-
-/**
- * searches for locale in given object
- */
-
-function getLocaleFromObject(obj) {
-  var locale;
-  if (obj && obj.scope) {
-    locale = obj.scope.locale;
-  }
-  if (obj && obj.locale) {
-    locale = obj.locale;
-  }
-  return locale;
-}
-
-/**
- * read locale file, translate a msg and write to fs if new
- */
-
-function translate(locale, singular, plural) {
-  if (locale === undefined) {
-    logWarn("WARN: No locale found - check the context of the call to __(). Using " + defaultLocale + " as current locale");
-    locale = defaultLocale;
-  }
-
-  // attempt to read when defined as valid locale
-  if (!locales[locale]) {
-    read(locale);
-  }
-
-  // fallback to default when missed
-  if (!locales[locale]) {
-    logWarn("WARN: Locale " + locale + " couldn't be read - check the context of the call to $__. Using " + defaultLocale + " (default) as current locale");
-    locale = defaultLocale;
-    read(locale);
-  }
-
-  if (plural) {
-    if (!locales[locale][singular]) {
-      locales[locale][singular] = {
-        'one': singular,
-        'other': plural
-      };
-      write(locale);
-    }
-  }
-
-  if (!locales[locale][singular]) {
-    locales[locale][singular] = singular;
-    write(locale);
-  }
-  return locales[locale][singular];
-}
-
-/**
- * try reading a file
- */
-
-function read(locale) {
-  var localeFile = {},
-      file = getStorageFilePath(locale);
-  try {
-    logDebug('read ' + file + ' for locale: ' + locale);
-    localeFile = fs.readFileSync(file);
-    try {
-      // parsing filecontents to locales[locale]
-      locales[locale] = JSON.parse(localeFile);
-    } catch (parseError) {
-      logError('unable to parse locales from file (maybe ' + file + ' is empty or invalid json?): ', parseError);
-    }
-  } catch (readError) {
-    // unable to read, so intialize that file
-    // locales[locale] are already set in memory, so no extra read required
-    // or locales[locale] are empty, which initializes an empty locale.json file
-    
-    // since the current invalid locale could exist, we should back it up
-    if (fs.existsSync(file)) {
-      logDebug('backing up invalid locale ' + locale + ' to ' + file + '.invalid');
-      fs.renameSync(file, file + '.invalid');
-    }
-    
-    logDebug('initializing ' + file);
-    write(locale);
-  }
-}
-
-/**
- * try writing a file in a created directory
- */
-
-function write(locale) {
-  var stats, target, tmp;
-
-  // don't write new locale information to disk if updateFiles isn't true
-  if (!updateFiles) {
-    return;
-  }
-
-  // creating directory if necessary
-  try {
-    stats = fs.lstatSync(directory);
-  } catch (e) {
-    logDebug('creating locales dir in: ' + directory);
-    fs.mkdirSync(directory, parseInt('755', 8));
-  }
-
-  // first time init has an empty file
-  if (!locales[locale]) {
-    locales[locale] = {};
-  }
-
-  // writing to tmp and rename on success
-  try {
-    target = getStorageFilePath(locale);
-    tmp = target + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(locales[locale], null, indent), "utf8");
-    stats = fs.statSync(tmp);
-    if (stats.isFile()) {
-      fs.renameSync(tmp, target);
-    } else {
-      logError('unable to write locales to file (either ' + tmp + ' or ' + target + ' are not writeable?): ');
-    }
-  } catch (e) {
-    logError('unexpected error writing files (either ' + tmp + ' or ' + target + ' are not writeable?): ', e);
-  }
-}
-
-/**
- * basic normalization of filepath
- */
-
-function getStorageFilePath(locale) {
-  // changed API to use .json as default, #16
-  var ext = extension || '.json',
-      filepath = path.normalize(directory + pathsep + locale + ext),
-      filepathJS = path.normalize(directory + pathsep + locale + '.js');
-  // use .js as fallback if already existing
-  try {
-    if (fs.statSync(filepathJS)) {
-      logDebug('using existing file ' + filepathJS);
-      extension = '.js';
-      return filepathJS;
-    }
-  } catch (e) {
-    logDebug('will write to ' + filepath);
-  }
-  return filepath;
-}
-
-/**
- * Logging proxies
- */
-
-function logDebug(msg) {
-  debug(msg);
-}
-
-function logWarn(msg) {
-  warn(msg);
-}
-
-function logError(msg) {
-  error(msg);
-}

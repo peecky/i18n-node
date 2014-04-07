@@ -1,290 +1,179 @@
-# i18n
+# Node.js: i18n-2
 
-Lightweight simple translation module with dynamic json storage. Supports plain vanilla node.js apps and should work with any framework (like _express_, _restify_ and probably more) that exposes an `app.use()` method passing in `res` and `req` objects.
-Uses common __('...') syntax in app and templates.
-Stores language files in json files compatible to [webtranslateit](http://webtranslateit.com/) json format.
-Adds new strings on-the-fly when first used in your app.
-No extra parsing needed.
+ * Designed to work out-of-the-box with Express.js
+ * Lightweight simple translation module with dynamic json storage. 
+ * Uses common __('...') syntax in app and templates.
+ * Stores language files in json files compatible to [webtranslateit](http://webtranslateit.com/) json format.
+ * Adds new strings on-the-fly when first used in your app.
+ * No extra parsing needed.
 
-[![Build Status](https://secure.travis-ci.org/mashpie/i18n-node.png?branch=master)](http://travis-ci.org/mashpie/i18n-node) [![NPM version](https://badge.fury.io/js/i18n.png)](http://badge.fury.io/js/i18n)
-[![Dependency Status](https://gemnasium.com/mashpie/i18n-node.png)](https://gemnasium.com/mashpie/i18n-node)
+## Installation
 
-## Install
+Run the following:
 
-	npm install i18n
+	npm install i18n-2
 
-## Test
+## Simple Example
 
-	npm test
+Note: If you plan on using the module with Express.js, please view the on that, below.
 
-## Load
-
-	// load modules
-	var express = require('express'),
-	    i18n = require("i18n");
-
-now you are ready to use a global `i18n.__('Hello')`. **Global** assumes you share a common state of localization in any time and any part of your app. This is usually fine in cli-style scripts. When serving responses to http requests you'll need to make sure that scope is __NOT__ shared globally but attached to your request object.
-
-## Configure
-
-Minimal example, just setup two locales and a project specific directory
-
-    i18n.configure({
-        locales:['en', 'de'],
-        directory: __dirname + '/locales'
-    });
-
-### list of configuration options
-
-	i18n.configure({
-	    // setup some locales - other locales default to en silently
-	    locales:['en', 'de'],
-
-	    // you may alter a site wide default locale
-	    defaultLocale: 'de',
-
-	    // sets a custom cookie name to parse locale settings from  - defaults to NULL
-	    cookie: 'yourcookiename',
-
-	    // where to store json files - defaults to './locales' relative to modules directory
-	    directory: './mylocales',
-
-	    // whether to write new locale information to disk - defaults to true
-	    updateFiles: false,
-
-	    // what to use as the indentation unit - defaults to "\t"
-	    indent: "\t",
-
-	    // setting extension of json files - defaults to '.json' (you might want to set this to '.js' according to webtranslateit)
-	    extension: '.js',
+	// Load Module and Instantiate
+	var i18n = new (require('i18n-2'))({
+		// setup some locales - other locales default to the first locale
+		locales: ['en', 'de']
 	});
 
-## Example usage in gobal scope
+	// Use it however you wish
+	console.log( i18n.__("Hello!") );
 
-In your app, when not registered to a specific object:
+## API:
 
-	var greeting = i18n.__('Hello');
+### `new I18n(options)`
 
-## Example usage in express.js
+The `I18n` function is the return result from calling `require('i18n-2')`. You use this to instantiate an `I18n` instance and set any configuration options. You'll probably only do this if you're not using the `expressBind` method.
 
-In an express app, you might use i18n.init to gather language settings of your visitors and also bind your helpers to response object honoring request objects locale, ie:
+### `I18n.expressBind(app, options)`
 
-	// Configuration
-	app.configure(function() {
+You'll use this method to attach the i18n functionality to the request object inside Express.js. The app argument should be your Express.js app and the options argument should be the same as if you were calling `new I18n(options)`. See **"Using with Express.js"** at the end of this README for more details.
 
-    	[...]
+### `__(string, [...])`
 
-	    // default: using 'accept-language' header to guess language settings
-	    app.use(i18n.init);
+Translates a string according to the current locale. Also supports sprintf syntax, allowing you to replace text, using the node-sprintf module.
 
-	    [...]
-	});
+For example:
 
-in your apps methods:
+	var greeting = i18n.__('Hello %s, how are you today?', 'Marcus');
 
-	app.get('/de', function(req, res){
-      var greeting = res.__('Hello');
-    });
+this puts **Hello Marcus, how are you today?**. You might also add endless arguments or even nest it.
 
+	var greeting = i18n.__('Hello %s, how are you today? How was your %s?', 
+		'Marcus', i18n.__('weekend'));
 
-in your templates (depending on your template engine)
+which puts **Hello Marcus, how are you today? How was your weekend?**
 
-	<%= __('Hello') %>
-
-	${__('Hello')}
-
-
-## Examples for common setups
-
-See [tested examples](https://github.com/mashpie/i18n-node/tree/master/examples) inside `/examples` or browse these gists:
-
-* [plain node.js + http](https://gist.github.com/mashpie/5188567)
-* [plain node.js + restify](https://gist.github.com/mashpie/5694251)
-* [express 3 + cookie](https://gist.github.com/mashpie/5124626)
-* [express 3 + hbs 2 (+ cookie)](https://gist.github.com/mashpie/5246334)
-* [express 3 + mustache (+ cookie)](https://gist.github.com/mashpie/5247373)
-* [express 3 + jade 0.3 (+ cookie)](https://gist.github.com/hankwang/5994144)
-
-## API
-
-### __()
-
-Translates a single phrase and adds it to locales if unknown. Returns translated parsed and substituted string.
-
-	// template and global (this.locale == 'de')
-	__('Hello'); // Hallo
-	__('Hello %s', 'Marcus'); // Hallo Marcus
-	__('Hello {{name}}', { name: 'Marcus' }); // Hallo Marcus
-
-
-	// scoped via req object (req.locale == 'de')
-	req.__('Hello'); // Hallo
-	req.__('Hello %s', 'Marcus'); // Hallo Marcus
-	req.__('Hello {{name}}', { name: 'Marcus' }); // Hallo Marcus
-
-	// passing specific locale
-	__({phrase: 'Hello', locale: 'fr'}); // Salut
-	__({phrase: 'Hello %s', locale: 'fr'}, 'Marcus'); // Salut Marcus
-	__({phrase: 'Hello {{name}}, locale: 'fr'}, { name: 'Marcus' }); // Salut Marcus
-
-### __n()
-
-Plurals translation of a single phrase. Singular and plural forms will get added to locales if unknown. Returns translated parsed and substituted string based on `count` parameter.
-
-	// template and global (this.locale == 'de')
-	__n("%s cat", "%s cats", 1); // 1 Katze
-	__n("%s cat", "%s cats", 3); // 3 Katzen
-
-	// scoped via req object (req.locale == 'de')
-	req.__n("%s cat", "%s cats", 1); // 1 Katze
-	req.__n("%s cat", "%s cats", 3); // 3 Katzen
-
-	// passing specific locale
-	__n({singular: "%s cat", plural: "%s cats", locale: "fr"}, 1); // 1 chat
-	__n({singular: "%s cat", plural: "%s cats", locale: "fr"}, 3); // 3 chat
-
-	__n({singular: "%s cat", plural: "%s cats", locale: "fr", count: 1}); // 1 chat
-	__n({singular: "%s cat", plural: "%s cats", locale: "fr", count: 3}); // 3 chat
-
-### setLocale()
-
-Setting the current locale (ie.: `en`) globally or in current scope.
-
-	setLocale('de');
-	setLocale(req, 'de');
-	req.setLocale('de');
-
-To change the initial locale (when you set it on `i18n.init()`) for all the user session (eg.: you have a language
-selector on your web page to let the user select the preferred language), you have some options.
-You could set it via `res.setLocale('de')` on each loop before load the each page.
-Or you could manage it via any session middleware or by setting a cookie in the client and let i18n read it's value.
-
-In the last case you will need to enable cookies (eg. for express will be `app.use(express.cookieParser())`) and then
-you can use the `i18n.configure.cookie` to let i18n which language must use. Simply use the same cookie name when setting it in the user preferred language, like here:
-
-	res.cookie('yourcookiename', 'de', { maxAge: 900000, httpOnly: true });
-
-After this and until the cookie expires, i18n will get the value of the cookie and will set that language instead of default for every page.
-
-### getLocale()
-
-Getting the current locale (ie.: `en`) from current scope or globally.
-
-	getLocale(); // --> de
-	getLocale(req); // --> de
-	req.getLocale(); // --> de
-
-### getCatalog()
-
-Returns a whole catalog optionally based on current scope and locale.
-
-	getCatalog(); // returns all locales
-	getCatalog('de'); // returns just 'de'
-
-	getCatalog(req); // returns all locales
-	getCatalog(req, 'de'); // returns just 'de'
-
-	req.getCatalog(); // returns all locales
-	req.getCatalog('de'); // returns just 'de'
-
-
-
-## Optionally manual attaching helpers for different template engines
-
-In general i18n has to be attached to the response object to let it's public api get accessible in your templates and methods. As of **0.4.0** i18n tries to do so internally via `i18n.init`, as if you were doing it in `app.configure` on your own:
-
-	app.use(function(req, res, next) {
-		// express helper for natively supported engines
-		res.locals.__ = res.__ = function() {
-			return i18n.__.apply(req, arguments);
-		};
-
-		[...]
-
-		next();
-	});
-
-Different engines need different implementations, so yours might miss or not work with the current default helpers. This one showing an example for mustache in express:
-
-	// register helper as a locals function wrapped as mustache expects
-	app.use(function (req, res, next) {
-		// mustache helper
-		res.locals.__ = function () {
-		  return function (text, render) {
-		    return i18n.__.apply(req, arguments);
-		  };
-		};
-
-		[...]
-
-		next();
-	});
-
-You could still setup your own implementation. Please refer to Examples below, post an issue or contribute your setup.
-
-## Output parsing of expressions
-
-As inspired by gettext there is currently support for sprintf-style expressions. Named parameters are on roadmap.
-
-### sprintf support
-
-	var greeting = __('Hello %s, how are you today?', 'Marcus');
-
-this puts *Hello Marcus, how are you today?*. You might add endless arguments and even nest it.
-
-	var greeting = __('Hello %s, how are you today? How was your %s.', 'Marcus', __('weekend'));
-
-which puts *Hello Marcus, how are you today? How was your weekend.*
-
-### mustache support
-
-You may also use [mustach](http://mustache.github.io/) syntax for your message strings. To pass named parameters to your message, just provide an object as the second parameter. You can still pass unnamed parameters by adding additional arguments.
-
-	var greeting = __('Hello {{name}}, how are you today?', { name: 'Marcus' });
-
-this puts *Hello Marcus, how are you today?*. You might also combine it with sprintf arguments and also nest it.
-
-	var greeting = __('Hello {{name}}, how was your %s.', { name: 'Marcus' }, __('weekend'));
-
-which puts *Hello Marcus, how was your weekend.*
-
-### variable support
-
-you might even use dynamic variables as they get interpreted on the fly. Better make sure no user input finds it's way to that point as they all get added to the `en.js` file if not yet existing.
+You might even use dynamic variables. They get added to the current locale file if they do not yet exist.
 
 	var greetings = ['Hi', 'Hello', 'Howdy'];
-    for (var i=0; i < greetings.length; i++) {
-        console.log( __(greetings[i]) );
-    };
+	for (var i = 0; i < greetings.length; i++) {
+		console.log( i18n.__(greetings[i]) );
+	};
 
-which puts
+which outputs:
 
 	Hi
 	Hello
 	Howdy
 
-### basic plural support
+### `__n(one, other, count, [...])`
 
-two different plural forms are supported as response to `count`:
+Different plural forms are supported as a response to `count`:
 
-	var singular = __n('%s cat', '%s cats', 1);
-    var plural = __n('%s cat', '%s cats', 3);
+	var singular = i18n.__n('%s cat', '%s cats', 1);
+	var plural = i18n.__n('%s cat', '%s cats', 3);
 
-this puts **1 cat** or **3 cats**
-and again these could get nested:
+this gives you **1 cat** and **3 cats**. As with `__(...)` these could be nested:
 
-	var singular = __n('There is one monkey in the %%s', 'There are %d monkeys in the %%s', 1, 'tree');
-	var plural = __n('There is one monkey in the %%s', 'There are %d monkeys in the %%s', 3, 'tree');
+	var singular = i18n.__n('There is one monkey in the %%s', 'There are %d monkeys in the %%s', 1, 'tree');
+	var plural = i18n.__n('There is one monkey in the %%s', 'There are %d monkeys in the %%s', 3, 'tree');
 
-putting *There is one monkey in the tree* or *There are 3 monkeys in the tree*
+putting **There is one monkey in the tree** or **There are 3 monkeys in the tree**.
 
-## Storage
+### `getLocale()`
 
-Will get modular support for different storage engines, currently just json files are stored in filesystem.
+Returns a string containing the current locale. If no locale has been specified then it default to the value specified in `defaultLocale`.
 
-### json file
+### `setLocale(locale)`
 
-the above will automatically generate a `en.json` by default inside `./locales/` which looks like
+Sets a locale to the specified string. If the locale is unknown, the locale defaults to the one specified by `defaultLocale`. For example if you have locales of 'en' and 'de', and a `defaultLocale` of 'en', then call `.setLocale('ja')` it will be equivalent to calling `.setLocale('en')`.
+
+### `setLocaleFromQuery([request])`
+
+To be used with Express.js or another framework that provides a `request` object. Generally you would want to use this by setting the `query` option to `true`.
+
+This method takes in an Express.js request object, looks at the query property, and specifically at the `lang` parameter. Reading the value of that parameter will then set the locale.
+
+For example:
+
+	example.com/?lang=de
+
+Will then do:
+
+	setLocale('de')
+
+### `setLocaleFromSubdomain([request])`
+
+To be used with Express.js or another framework that provides a `request` object. Generally you would want to use this by setting the `subdomain` option to `true`.
+
+This method takes in an Express.js request object, looks at the hostname, and extracts the sub-domain. Reading the value of the subdomain the locale is then set.
+
+For example:
+
+	de.example.com
+
+Will then do:
+
+	setLocale('de')
+
+### `setLocaleFromCookie([request])`
+
+To be used with Express.js or another framework that provides a `request` object. This method takes a request object, looks at it's cookies property and tries to find a cookie named `cookieName` (default: `lang`).
+
+See [Using with Express.js](#using-with-expressjs) for a complete example.
+
+For example:
+
+	console.log(req.cookies.lang)
+	=> 'de'
+	setLocaleFromCookie()
+
+Will then do:
+
+	setLocale('de')
+
+### `isPreferredLocale()`
+
+To be used with Express.js or another framework that provides a `request` object. This method works if a `request` option has been specified when the i18n object was instantiated.
+
+This method returns true if the locale specified by `getLocale` matches a language desired by the browser's `Accept-language` header.
+
+## Configuration
+
+When you instantiate a new i18n object there are a few options that you can pass in. The only required option is `locales`.
+
+### `locales`
+
+You can pass in the locales in two ways: As an array of strings or as an object of objects. For example:
+
+	locales: ['en', 'de']
+
+This will set two locales (en and de) and read in the JSON contents of both translation files. (By default this is equal to "./locales/NAME.js", you can configure this by changing the `directory` and `extension` options.) Additionally when you pass in an array of locales the first locale is automatically set as the `defaultLocale`.
+
+You can also pass in an object, like so:
+
+	locales: {
+		"en": {
+			"Hello": "Hello"
+		},
+		"de": {
+			"Hello": "Hallo"
+		}
+	}
+
+In this particular case no files will ever be read when doing a translation. This is ideal if you are loading your translations from a different source. Note that no `defaultLocale` is set when you pass in an object, you'll need to set it yourself.
+
+### `defaultLocale`
+
+You can explicitly define a default locale to be used in cases where `.setLocale(locale)` is used with an unknown locale. For example if you have locales of 'en' and 'de', and a `defaultLocale` of 'en', then call `.setLocale('ja')` it will be equivalent to calling `.setLocale('en')`.
+
+### `directory` and `extension`
+
+These default to `"./locales"` and `".js"` accordingly. They are used for saving and reading the locale data files (see the `locales` option for more information on how this works).
+
+When your server is in production mode it will read these files only once and then cache the result. It will not write any updated strings when in production mode.
+
+When in development, or testing, mode the files will be read on every instantiation of the `i18n` object. Additionally newly-detected strings will be automatically added, and written out, to the locale JSON files.
+
+A generated `en.js` inside `./locales/` may look something like:
 
 	{
 		"Hello": "Hello",
@@ -304,52 +193,98 @@ the above will automatically generate a `en.json` by default inside `./locales/`
 		"tree": "tree"
 	}
 
-that file can be edited or just uploaded to [webtranslateit](http://docs.webtranslateit.com/file_formats/) for any kind of collaborative translation workflow:
+that file can be edited or just uploaded to [webtranslateit](http://docs.webtranslateit.com/file_formats/) for any kind of collaborative translation workflow.
 
-	{
-		"Hello": "Hallo",
-		"Hello %s, how are you today?": "Hallo %s, wie geht es dir heute?",
-		"weekend": "Wochenende",
-		"Hello %s, how are you today? How was your %s.": "Hallo %s, wie geht es dir heute? Wie war dein %s.",
-		"Hi": "Hi",
-		"Howdy": "Hallöchen",
-		"%s cat": {
-			"one": "%s Katze",
-			"other": "%s Katzen"
-		},
-		"There is one monkey in the %%s": {
-			"one": "Im %%s sitzt ein Affe",
-			"other": "Im %%s sitzen %d Affen"
-		},
-		"tree": "Baum"
-	}
+### `request`, `subdomain`, and `query`
 
-## Logging & Debugging
+These options are to be used with Express.js or another framework that provides a `request` object. In order to use the `subdomain` and `query` options you must specify the `request` option, passing in the Express.js `request` object.
 
-Logging any kind of output is moved to [debug](https://github.com/visionmedia/debug) module. To let i18n output anything run your app with `DEBUG` env set like so:
+If you pass in a `request` object a new `i18n` property will be attached to it, containing the i18n instance.
 
-	$ DEBUG=i18n:* node app.js
+Note that you probably won't need to use `request` directly, if you use `expressBind` it is taken care of automatically.
 
-i18n exposes three log-levels:
+Setting the `subdomain` option to `true` will run the `setLocaleFromSubdomain` method automatically on every request.
 
-* i18n:debug
-* i18n:warn
-* i18n:error
+By default the `query` option is set to true. Setting the `query` option to `false` will stop the `setLocaleFromQuery` method from running automatically on every request.
 
-if you only want to get errors and warnings reported start your node server like so:
+### `register`
 
-	$ DEBUG=i18n:warn,i18n:error node app.js
+Copy the `__`, `__n`, `getLocale`, and `isPreferredLocale` methods over to the object specified by the `register` property.
 
-Combine those settings with you existing application if any of you other modules or libs also uses __debug__
+	var obj = {};
+	new I18n({ 'register': obj })
+	console.log( obj.__("Hello.") );
+
+### `devMode`
+
+By default the `devMode` property is automatically set to be `false` if Node.js is in production mode and `true` otherwise. You can override this by setting a different value to the `devMode` option.
+
+## Using with Express.js
+
+### Load and Configure
+
+In your app.js:
+
+	// load modules
+	var express = require('express'),
+		I18n = require('i18n-2');
+
+	// Express Configuration
+	app.configure(function() {
+
+		// ...
+
+		// Attach the i18n property to the express request object
+		// And attach helper methods for use in templates
+		I18n.expressBind(app, {
+			// setup some locales - other locales default to en silently
+			locales: ['en', 'de'],
+			// change the cookie name from 'lang' to 'locale'
+			cookieName: 'locale'
+		});
+		
+		// This is how you'd set a locale from req.cookies.
+		// Don't forget to set the cookie either on the client or in your Express app.
+		app.use(function(req, res, next) {
+			req.i18n.setLocaleFromCookie();
+			next();
+		});
+
+		// Set up the rest of the Express middleware
+		app.use(app.router);
+		app.use(express.static(__dirname + '/public'));
+	});
+
+### Inside Your Express View
+
+	module.exports = {
+		index: function(req, res) {
+			res.render("index", {
+				title: req.i18n.__("My Site Title"),
+				desc: req.i18n.__("My Site Description")
+			});
+		}
+	};
+
+### Inside Your Templates
+
+(This example uses the Swig templating system.)
+
+	{% extends "page.swig" %}
+
+	{% block content %}
+	<h1>{{ __("Welcome to:") }} {{ title }}</h1>
+	<p>{{ desc }}</p>
+	{% endblock %}
 
 ## Changelog
 
-* 0.4.1: stable release; merged/closed: #57, #60, #67 typo fixes; added more examples and new features: #53, #65, #66 - and some more api reference
-* 0.4.0: stable release; closed: #22, #24, #4, #10, #54; added examples, clarified concurrency usage in different template engines, added `i18n.getCatalog`
-* 0.3.9: express.js usage, named api, jscoverage + more test, refactored configure, closed: #51, #20, #16, #49
-* 0.3.8: fixed: #44, #49; merged: #47, #45, #50; added: #33; updated: README
-* 0.3.7: tests by mocha.js, added `this.locale` to `__` and `__n`
-* 0.3.6: travisCI, writeFileSync, devDependencies, jslint, MIT, fixed: #29, #9, merged: #25, #30, #43
+* 0.4.5: a number of bug fixes
+* 0.4.4: fix typo
+* 0.4.3: fix issue with preferredLocale failing on useragents with no accept lang header
+* 0.4.2: fix some issues with cache init
+* 0.4.1: rename locale query string param to lang
+* 0.4.0: made settings contained, and scoped, to a single object (complete re-write by jeresig)
 * 0.3.5: fixed some issues, prepared refactoring, prepared publishing to npm finally
 * 0.3.4: merged pull request #13 from Fuitad/master and updated README
 * 0.3.3: merged pull request from codders/master and modified for backward compatibility. Usage and tests pending

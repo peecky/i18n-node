@@ -1,46 +1,32 @@
-/*jslint nomen: true, undef: true, sloppy: true, white: true, stupid: true, passfail: false, node: true, plusplus: true, indent: 2 */
+// Run $ expresso
+var I18n = require('../i18n'),
+	assert = require('assert'),
+	fs = require('fs');
 
-var i18n = process.env.EXPRESS_COV ? require('../i18n-cov') : require('../i18n'),
-    should = require("should"),
-    fs = require('fs');
+module.exports = {
+	'check set/getLocale': function () {
+		var i18n = new I18n({
+			locales: ['en', 'de'],
+			directory: './testlocales',
+			extension: '.json'
+		});
 
-describe('Module Config', function () {
+		var loc = i18n.getLocale();
+		assert.equal('en', i18n.getLocale(), 'should return default setting');
+		assert.equal('de', i18n.setLocale('de'), 'should return the new setting');
+		assert.equal('de', i18n.getLocale(), 'should return the new setting');
+	},
 
-  var testScope = {};
+	'check singular': function () {
+		var i18n = new I18n({
+			locales: ['en', 'de'],
+			directory: './testlocales',
+			extension: '.json'
+		});
 
-  beforeEach(function () {
-    i18n.configure({
-      locales: ['en', 'de'],
-      register: testScope,
-      directory: './customlocales',
-      extension: '.customextension'
-    });
-    testScope.__('Hello');
-  });
-
-  afterEach(function () {
-    var stats = fs.lstatSync('./customlocales');
-    should.exist(stats);
-    if (stats) {
-      try {
-        fs.unlinkSync('./customlocales/de.customextension');
-        fs.unlinkSync('./customlocales/en.customextension');
-        fs.rmdirSync('./customlocales');
-      } catch (e) {}
-    }
-
-  });
-
-  it('should be possible to setup a custom directory', function () {
-    var stats = fs.lstatSync('./customlocales');
-    should.exist(stats);
-  });
-
-  it('should be possible to read custom files with custom extensions', function () {
-    var statsde = fs.lstatSync('./customlocales/de.customextension'),
-        statsen = fs.lstatSync('./customlocales/en.customextension');
-    should.exist(statsde);
-    should.exist(statsen);
-  });
-
-});
+		i18n.setLocale('en');
+		assert.equal(i18n.__('Hello'), 'Hello');
+		assert.equal(i18n.__('Hello %s, how are you today?', 'Marcus'), 'Hello Marcus, how are you today?');
+		assert.equal(i18n.__('Hello %s, how are you today? How was your %s.', 'Marcus', i18n.__('weekend')), 'Hello Marcus, how are you today? How was your weekend.');
+	}
+};

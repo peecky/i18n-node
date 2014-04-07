@@ -1,13 +1,13 @@
 {
-  "name": "i18n",
-  "description": "lightweight translation module with dynamic json storage",
-  "version": "0.4.1",
-  "homepage": "http://github.com/mashpie/i18n-node",
+  "name": "i18n-2",
+  "description": "lightweight simple translation module with dynamic json storage",
+  "version": "0.4.6",
+  "homepage": "http://github.com/jeresig/i18n-node-2",
   "repository": {
     "type": "git",
-    "url": "http://github.com/mashpie/i18n-node.git"
+    "url": "http://github.com/jeresig/i18n-node-2.git"
   },
-  "author": "Marcus Spiegel <marcus.spiegel@gmail.com>",
+  "author": "John Resig <jeresig@gmail.com>",
   "main": "./index",
   "keywords": ["template", "i18n", "l10n"],
   "directories": {
@@ -19,8 +19,7 @@
     "debug": "*"
   },
   "devDependencies": {
-    "mocha": ">=1.8.1",
-    "should": ">=1.2.1"
+    "expresso": ">=0.9.2"
   },
   "engines": {
     "node": ">=0.8.0"
