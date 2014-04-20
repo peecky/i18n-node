@@ -222,16 +222,14 @@ i18n.prototype = {
 			self = this,
 			prefLocale;
 
-		while ((match = regExp.exec(accept))){
+		while (!prefLocale && (match = regExp.exec(accept))){
 			var locale = match[2].toLowerCase();
 			var parts = locale.split("-");
 
-			if (!prefLocale) {
-				if (self.locales[locale]) {
-					prefLocale = locale;
-				} else if (parts.length > 1 && self.locales[parts[0]]) {
-					prefLocale = parts[0];
-				}
+			if (self.locales[locale]) {
+				prefLocale = locale;
+			} else if (parts.length > 1 && self.locales[parts[0]]) {
+				prefLocale = parts[0];
 			}
 		}
 
