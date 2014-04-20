@@ -223,7 +223,7 @@ i18n.prototype = {
 			prefLocale;
 
 		while ((match = regExp.exec(accept))){
-			var locale = match[2];
+			var locale = match[2].toLowerCase();
 			var parts = locale.split("-");
 
 			if (!prefLocale) {
